@@ -1,0 +1,11 @@
+  <mujocoinclude>
+    <actuator>
+        <position class="fr3" name="fr3_joint1" joint="fr3_joint1" kp="45000" kv="4050"/>
+        <position class="fr3" name="fr3_joint2" joint="fr3_joint2" kp="45000" kv="4050"/>
+        <position class="fr3" name="fr3_joint3" joint="fr3_joint3" kp="35000" kv="3050"/>
+        <position class="fr3" name="fr3_joint4" joint="fr3_joint4" kp="35000" kv="3050"/>
+        <position class="fr3" name="fr3_joint5" joint="fr3_joint5" kp="20000" kv="2000"/>
+        <position class="fr3" name="fr3_joint6" joint="fr3_joint6" kp="20000" kv="2000"/>
+        <position class="fr3" name="fr3_joint7" joint="fr3_joint7" kp="20000" kv="2000"/>
+    </actuator>
+  </mujocoinclude>
