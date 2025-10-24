@@ -214,7 +214,7 @@ void cRoboticsController::HW2_Jacobian()
     
 	Vector3d x_desired_ = DyrosMath::cubicVector<3>(play_time_,
 		                                   control_start_time_,
-		                                   control_start_time_ + 2.0, 
+		                                   control_start_time_ + 2, 
                                            EEPos_init, 
                                            EEPos_target, 
                                            zero_vector, 
@@ -222,7 +222,7 @@ void cRoboticsController::HW2_Jacobian()
 
     Vector3d x_desired_dot_ = DyrosMath::cubicDotVector<3>(play_time_,
 		                                   control_start_time_,
-		                                   control_start_time_ + 2.0, 
+		                                   control_start_time_ + 2, 
                                            EEPos_init, 
                                            EEPos_target, 
                                            zero_vector, 
@@ -237,6 +237,7 @@ void cRoboticsController::HW2_Jacobian()
     MatrixXd J_JT = CurrentEEJac * CurrentEEJac.transpose(); 
     MatrixXd I_damped = J_JT + lambda * lambda * MatrixXd::Identity(CurrentEEJac.rows(), CurrentEEJac.rows());
     MatrixXd J_pinv = CurrentEEJac.transpose() * I_damped.inverse(); 
+    //MatrixXd J_pinv = CurrentEEJac.transpose() * J_JT.inverse();
 
     Vector7d target_position;
     target_position = q_t + J_pinv * x_desired_dot_ * (play_time_ - q_t_time);
@@ -303,15 +304,15 @@ void cRoboticsController::HW2_CLIK()
     Matrix4d EEPos_cur_Matrix = getEEPose(q_);
     Vector3d EEPos_cur;
     EEPos_cur.setZero();
-    EEPos_cur(0) = EEPos_init_Matrix(0,3);
-    EEPos_cur(1) = EEPos_init_Matrix(1,3);
-    EEPos_cur(2) = EEPos_init_Matrix(2,3);
+    EEPos_cur(0) = EEPos_cur_Matrix(0,3);
+    EEPos_cur(1) = EEPos_cur_Matrix(1,3);
+    EEPos_cur(2) = EEPos_cur_Matrix(2,3);
 
     Matrix3d Gain;
     Gain.setZero();
-    Gain(0,0) = 0.05;
-    Gain(1,1) = 0.05;
-    Gain(2,2) = 0.05;
+    Gain(0,0) = 5;
+    Gain(1,1) = 5;
+    Gain(2,2) = 5;
 
     double lambda = 0.01; 
     MatrixXd J_JT = CurrentEEJac * CurrentEEJac.transpose(); 
@@ -383,15 +384,15 @@ void cRoboticsController::HW2_CLIK_WPI()
     Matrix4d EEPos_cur_Matrix = getEEPose(q_);
     Vector3d EEPos_cur;
     EEPos_cur.setZero();
-    EEPos_cur(0) = EEPos_init_Matrix(0,3);
-    EEPos_cur(1) = EEPos_init_Matrix(1,3);
-    EEPos_cur(2) = EEPos_init_Matrix(2,3);
+    EEPos_cur(0) = EEPos_cur_Matrix(0,3);
+    EEPos_cur(1) = EEPos_cur_Matrix(1,3);
+    EEPos_cur(2) = EEPos_cur_Matrix(2,3);
     
     Matrix3d Gain;
     Gain.setZero();
-    Gain(0,0) = 0.05;
-    Gain(1,1) = 0.05;
-    Gain(2,2) = 0.05;
+    Gain(0,0) = 5;
+    Gain(1,1) = 5;
+    Gain(2,2) = 5;
 
     Matrix7d Weight;
     Weight.setZero();
