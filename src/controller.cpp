@@ -46,6 +46,9 @@ cRoboticsController::cRoboticsController(const std::string& urdf_path,
     logging_file_1.open("log_jac.txt");
     logging_file_2.open("log_clik.txt");
     logging_file_3.open("log_wpi.txt");
+    logging_file_4.open("log_2tasks.txt");
+    logging_file_5.open("log_nullspace.txt");
+    logging_file_6.open("log_tasktrans.txt");
 }
 
 void cRoboticsController::keyMapping(const int &key)
@@ -73,6 +76,15 @@ void cRoboticsController::keyMapping(const int &key)
        setMode(hw2_CLIK_WPI);
         break;
     case '6':
+       setMode(hw3_2Tasks);
+        break;
+    case '7':
+       setMode(hw3_Nullspace);
+        break;
+    case '8':
+       setMode(hw3_TaskTrans);
+        break;
+    case '9':
        setMode(torque_ctrl_dynamic);
         break;
     // --------------------------------------------------------------------------------------
@@ -95,6 +107,8 @@ void cRoboticsController::compute(const double& play_time)
         x_init_ = x_;
         x2_init_ = x2_;
         q_t = q_;
+        h1 = 1;
+        h2 = 0;
     }
 
     switch (control_mode_)
@@ -102,7 +116,7 @@ void cRoboticsController::compute(const double& play_time)
         case joint_ctrl_init:
         {
             Vector7d target_position;
-            target_position << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, M_PI / 4.;
+            target_position << 0.0, 0.0, 0.0, 0.0, -M_PI / 2, M_PI / 2, M_PI / 4.;
             if(manipulator_control_mode_ == "position") moveJointPosition(target_position, 2.0);
             else moveJointPositionTorque(target_position, 2.0);
             break;
@@ -132,6 +146,21 @@ void cRoboticsController::compute(const double& play_time)
         case hw2_CLIK_WPI:
         {
             HW2_CLIK_WPI();
+            break;
+        }
+        case hw3_2Tasks:
+        {
+            HW3_2Tasks();
+            break;
+        }
+        case hw3_Nullspace:
+        {
+            HW3_Nullspace();
+            break;
+        }
+        case hw3_TaskTrans:
+        {
+            HW3_TaskTrans();
             break;
         }
         case torque_ctrl_dynamic:
@@ -433,6 +462,389 @@ void cRoboticsController::HW2_CLIK_WPI()
                   << std::endl;
 }
 
+
+void cRoboticsController::HW3_2Tasks()
+{
+    Matrix4d EEPos_init_Matrix = getEEPose(q_init_);
+    Matrix4d Link4Pos_init_Matrix = getLinkPose(q_init_, "fr3_link4");
+    Vector6d Pos_init;
+    Pos_init.setZero();
+    Pos_init(0) = EEPos_init_Matrix(0,3);
+    Pos_init(1) = EEPos_init_Matrix(1,3);
+    Pos_init(2) = EEPos_init_Matrix(2,3);
+    Pos_init(3) = Link4Pos_init_Matrix(0,3);
+    Pos_init(4) = Link4Pos_init_Matrix(1,3);
+    Pos_init(5) = Link4Pos_init_Matrix(2,3);
+
+    Vector6d Pos_target;
+    Pos_target.setZero();
+    Pos_target(0) = 0.35;
+    Pos_target(1) = 0.28;
+    Pos_target(2) = 0.70;
+    Pos_target(3) = 0;
+    Pos_target(4) = -0.15;
+    Pos_target(5) = 0.5;
+
+    Vector6d zero_vector;
+	zero_vector.setZero();
+
+    const double final_time = control_start_time_ + 2.0;
+    
+    Vector6d x_desired_;
+    Vector6d x_desired_dot_;
+
+    if (play_time_ >= final_time) {
+    x_desired_ = Pos_target; 
+    x_desired_dot_.setZero();
+    } else {
+    x_desired_ = DyrosMath::cubicVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    x_desired_dot_ = DyrosMath::cubicDotVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    }
+
+    MatrixXd EEJac = getEEJac(q_);
+    MatrixXd Link4Jac = getLinkJac(q_, "fr3_link4");
+    MatrixXd CurrentJac(6, 7);
+    CurrentJac.topRows(3) = EEJac.topRows(3);
+    CurrentJac.bottomRows(3) = Link4Jac.topRows(3);
+
+    Matrix4d EEPos_cur_Matrix = getEEPose(q_);
+    Matrix4d Link4Pos_cur_Matrix = getLinkPose(q_, "fr3_link4");
+    Vector6d Pos_cur;
+    Pos_cur.setZero();
+    Pos_cur(0) = EEPos_cur_Matrix(0,3);
+    Pos_cur(1) = EEPos_cur_Matrix(1,3);
+    Pos_cur(2) = EEPos_cur_Matrix(2,3);
+    Pos_cur(3) = Link4Pos_cur_Matrix(0,3);
+    Pos_cur(4) = Link4Pos_cur_Matrix(1,3);
+    Pos_cur(5) = Link4Pos_cur_Matrix(2,3);
+    
+    Matrix6d Gain;
+    Gain.setZero();
+    Gain(0,0) = 5;
+    Gain(1,1) = 5;
+    Gain(2,2) = 5;
+    Gain(3,3) = 2;
+    Gain(4,4) = 2;
+    Gain(5,5) = 2;
+
+    double lambda = 0.01; 
+    MatrixXd J_JT = CurrentJac * CurrentJac.transpose(); 
+    MatrixXd I_damped = J_JT + lambda * MatrixXd::Identity(CurrentJac.rows(), CurrentJac.rows());
+    MatrixXd J_pinv = CurrentJac.transpose() * I_damped.inverse(); 
+
+    Vector7d target_position;
+    target_position = q_t + J_pinv * (x_desired_dot_ + Gain*(x_desired_ - Pos_cur))* (play_time_ - q_t_time);
+    q_t = target_position;
+    q_t_time = play_time_;
+    q_desired_ = target_position;
+
+    Vector6d x_current;
+    x_current.setZero();
+    x_current(0) = x_(0,3);
+    x_current(1) = x_(1,3);
+    x_current(2) = x_(2,3);
+    x_current(3) = getLinkPose(q_, "fr3_link4")(0,3);
+    x_current(4) = getLinkPose(q_, "fr3_link4")(1,3);
+    x_current(5) = getLinkPose(q_, "fr3_link4")(2,3);
+    
+    logging_file_4 << std::fixed << std::setprecision(6) 
+                  << play_time_ << " "                 // 1. Time
+                  
+                  << x_desired_.transpose() << " "    // 2. x_desired (3개 원소)
+                  
+                  << x_current.transpose() << " "    // 3. x_current (3개 원소)
+
+                  << q_desired_.transpose()           // 4. q_desired (7개 원소)
+                  << std::endl;
+}
+
+void cRoboticsController::HW3_Nullspace()
+{
+    Matrix4d EEPos_init_Matrix = getEEPose(q_init_);
+    Matrix4d Link4Pos_init_Matrix = getLinkPose(q_init_, "fr3_link4");
+    Vector6d Pos_init;
+    Pos_init.setZero();
+    Pos_init(0) = EEPos_init_Matrix(0,3);
+    Pos_init(1) = EEPos_init_Matrix(1,3);
+    Pos_init(2) = EEPos_init_Matrix(2,3);
+    Pos_init(3) = Link4Pos_init_Matrix(0,3);
+    Pos_init(4) = Link4Pos_init_Matrix(1,3);
+    Pos_init(5) = Link4Pos_init_Matrix(2,3);
+
+    Vector6d Pos_target;
+    Pos_target.setZero();
+    Pos_target(0) = 0.35;
+    Pos_target(1) = 0.28;
+    Pos_target(2) = 0.70;
+    Pos_target(3) = 0;
+    Pos_target(4) = -0.15;
+    Pos_target(5) = 0.5;
+
+    Vector6d zero_vector;
+	zero_vector.setZero();
+
+    const double final_time = control_start_time_ + 2.0;
+    
+    Vector6d x_desired_;
+    Vector6d x_desired_dot_;
+
+    if (play_time_ >= final_time) {
+    x_desired_ = Pos_target; 
+    x_desired_dot_.setZero();
+    } else {
+    x_desired_ = DyrosMath::cubicVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    x_desired_dot_ = DyrosMath::cubicDotVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    }
+
+    MatrixXd EEJac = getEEJac(q_).topRows(3);
+    MatrixXd Link4Jac = getLinkJac(q_, "fr3_link4").topRows(3);
+
+    Matrix4d EEPos_cur_Matrix = getEEPose(q_);
+    Matrix4d Link4Pos_cur_Matrix = getLinkPose(q_, "fr3_link4");
+    Vector3d EEPos_cur;
+    EEPos_cur.setZero();
+    EEPos_cur(0) = EEPos_cur_Matrix(0,3);
+    EEPos_cur(1) = EEPos_cur_Matrix(1,3);
+    EEPos_cur(2) = EEPos_cur_Matrix(2,3);
+
+    Vector3d Link4Pos_cur;
+    Link4Pos_cur.setZero();
+    Link4Pos_cur(0) = Link4Pos_cur_Matrix(0,3);
+    Link4Pos_cur(1) = Link4Pos_cur_Matrix(1,3);
+    Link4Pos_cur(2) = Link4Pos_cur_Matrix(2,3);
+    
+    Vector3d EEGain;
+    EEGain.setZero();
+    EEGain(0) = 5;
+    EEGain(1) = 5;
+    EEGain(2) = 5;
+
+    Vector3d Link4Gain;
+    Link4Gain.setZero();
+    Link4Gain(0) = 6;
+    Link4Gain(1) = 6;
+    Link4Gain(2) = 10;
+
+    Vector3d x_dot_EE_desired;
+    x_dot_EE_desired.setZero();
+    x_dot_EE_desired(0) = x_desired_dot_(0) + EEGain(0) * (x_desired_(0) - EEPos_cur(0));
+    x_dot_EE_desired(1) = x_desired_dot_(1) + EEGain(1) * (x_desired_(1) - EEPos_cur(1));
+    x_dot_EE_desired(2) = x_desired_dot_(2) + EEGain(2) * (x_desired_(2) - EEPos_cur(2));
+
+    Vector3d x_dot_Link4_desired;
+    x_dot_Link4_desired.setZero();
+    x_dot_Link4_desired(0) = x_desired_dot_(3) + Link4Gain(0) * (x_desired_(3) - Link4Pos_cur(0));
+    x_dot_Link4_desired(1) = x_desired_dot_(4) + Link4Gain(1) * (x_desired_(4) - Link4Pos_cur(1));
+    x_dot_Link4_desired(2) = x_desired_dot_(5) + Link4Gain(2) * (x_desired_(5) - Link4Pos_cur(2));
+
+    double lambda = 0.01; 
+    MatrixXd J_JT_EE = EEJac * EEJac.transpose(); 
+    MatrixXd I_damped_EE = J_JT_EE + lambda * MatrixXd::Identity(EEJac.rows(), EEJac.rows());
+    MatrixXd J_pinv_EE = EEJac.transpose() * I_damped_EE.inverse();
+
+    MatrixXd J_JT_Link4 = Link4Jac * Link4Jac.transpose(); 
+    MatrixXd I_damped_Link4 = J_JT_Link4 + lambda * MatrixXd::Identity(Link4Jac.rows(), Link4Jac.rows());
+    MatrixXd J_pinv_Link4 = Link4Jac.transpose() * I_damped_Link4.inverse();
+
+    Matrix7d N1 = MatrixXd::Identity(7, 7) - J_pinv_EE * EEJac;
+
+    Vector7d q_dot_d21;
+    q_dot_d21.setZero();
+    q_dot_d21 = J_pinv_Link4 * (x_dot_Link4_desired - Link4Jac * J_pinv_EE * x_dot_EE_desired);
+
+    Vector7d target_position;
+    target_position = q_t + (J_pinv_EE * x_dot_EE_desired + N1 * q_dot_d21) * (play_time_ - q_t_time);
+    q_t = target_position;
+    q_t_time = play_time_;
+    q_desired_ = target_position;
+
+    Vector6d x_current;
+    x_current.setZero();
+    x_current(0) = x_(0,3);
+    x_current(1) = x_(1,3);
+    x_current(2) = x_(2,3);
+    x_current(3) = getLinkPose(q_, "fr3_link4")(0,3);
+    x_current(4) = getLinkPose(q_, "fr3_link4")(1,3);
+    x_current(5) = getLinkPose(q_, "fr3_link4")(2,3);
+    
+    logging_file_5 << std::fixed << std::setprecision(6) 
+                  << play_time_ << " "                 // 1. Time
+                  
+                  << x_desired_.transpose() << " "    // 2. x_desired (3개 원소)
+                  
+                  << x_current.transpose() << " "    // 3. x_current (3개 원소)
+
+                  << q_desired_.transpose()           // 4. q_desired (7개 원소)
+                  << std::endl;
+}
+
+void cRoboticsController::HW3_TaskTrans()
+{
+    Matrix4d EEPos_init_Matrix = getEEPose(q_init_);
+    Matrix4d Link4Pos_init_Matrix = getLinkPose(q_init_, "fr3_link4");
+    Vector6d Pos_init;
+    Pos_init.setZero();
+    Pos_init(0) = EEPos_init_Matrix(0,3);
+    Pos_init(1) = EEPos_init_Matrix(1,3);
+    Pos_init(2) = EEPos_init_Matrix(2,3);
+    Pos_init(3) = Link4Pos_init_Matrix(0,3);
+    Pos_init(4) = Link4Pos_init_Matrix(1,3);
+    Pos_init(5) = Link4Pos_init_Matrix(2,3);
+
+    Vector6d Pos_target;
+    Pos_target.setZero();
+    Pos_target(0) = 0.35;
+    Pos_target(1) = 0.28;
+    Pos_target(2) = 0.70;
+    Pos_target(3) = 0;
+    Pos_target(4) = -0.15;
+    Pos_target(5) = 0.5;
+
+    Vector6d zero_vector;
+	zero_vector.setZero();
+
+    const double final_time = control_start_time_ + 2.0;
+    
+    Vector6d x_desired_;
+    Vector6d x_desired_dot_;
+
+    if (play_time_ >= final_time) {
+    x_desired_ = Pos_target; 
+    x_desired_dot_.setZero();
+    } else {
+    x_desired_ = DyrosMath::cubicVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    x_desired_dot_ = DyrosMath::cubicDotVector<6>(play_time_,
+		                                   control_start_time_,
+		                                   control_start_time_ + 2.0, 
+                                           Pos_init, 
+                                           Pos_target, 
+                                           zero_vector, 
+                                           zero_vector);
+    }
+
+    MatrixXd EEJac = getEEJac(q_).topRows(3);
+    MatrixXd Link4Jac = getLinkJac(q_, "fr3_link4").topRows(3);
+
+    Matrix4d EEPos_cur_Matrix = getEEPose(q_);
+    Matrix4d Link4Pos_cur_Matrix = getLinkPose(q_, "fr3_link4");
+    Vector3d EEPos_cur;
+    EEPos_cur.setZero();
+    EEPos_cur(0) = EEPos_cur_Matrix(0,3);
+    EEPos_cur(1) = EEPos_cur_Matrix(1,3);
+    EEPos_cur(2) = EEPos_cur_Matrix(2,3);
+
+    Vector3d Link4Pos_cur;
+    Link4Pos_cur.setZero();
+    Link4Pos_cur(0) = Link4Pos_cur_Matrix(0,3);
+    Link4Pos_cur(1) = Link4Pos_cur_Matrix(1,3);
+    Link4Pos_cur(2) = Link4Pos_cur_Matrix(2,3);
+    
+    Vector3d EEGain;
+    EEGain.setZero();
+    EEGain(0) = 5;
+    EEGain(1) = 5;
+    EEGain(2) = 5;
+
+    Vector3d Link4Gain;
+    Link4Gain.setZero();
+    Link4Gain(0) = 6;
+    Link4Gain(1) = 6;
+    Link4Gain(2) = 10;
+
+    Vector3d x_dot_EE_desired;
+    x_dot_EE_desired.setZero();
+    x_dot_EE_desired(0) = x_desired_dot_(0) + EEGain(0) * (x_desired_(0) - EEPos_cur(0));
+    x_dot_EE_desired(1) = x_desired_dot_(1) + EEGain(1) * (x_desired_(1) - EEPos_cur(1));
+    x_dot_EE_desired(2) = x_desired_dot_(2) + EEGain(2) * (x_desired_(2) - EEPos_cur(2));
+
+    Vector3d x_dot_Link4_desired;
+    x_dot_Link4_desired.setZero();
+    x_dot_Link4_desired(0) = x_desired_dot_(3) + Link4Gain(0) * (x_desired_(3) - Link4Pos_cur(0));
+    x_dot_Link4_desired(1) = x_desired_dot_(4) + Link4Gain(1) * (x_desired_(4) - Link4Pos_cur(1));
+    x_dot_Link4_desired(2) = x_desired_dot_(5) + Link4Gain(2) * (x_desired_(5) - Link4Pos_cur(2));
+
+    double lambda = 0.01; 
+    MatrixXd J_JT_EE = EEJac * EEJac.transpose(); 
+    MatrixXd I_damped_EE = J_JT_EE + lambda * MatrixXd::Identity(EEJac.rows(), EEJac.rows());
+    MatrixXd J_pinv_EE = EEJac.transpose() * I_damped_EE.inverse();
+
+    MatrixXd J_JT_Link4 = Link4Jac * Link4Jac.transpose(); 
+    MatrixXd I_damped_Link4 = J_JT_Link4 + lambda * MatrixXd::Identity(Link4Jac.rows(), Link4Jac.rows());
+    MatrixXd J_pinv_Link4 = Link4Jac.transpose() * I_damped_Link4.inverse();
+
+    Matrix7d N1 = MatrixXd::Identity(7, 7) - J_pinv_EE * EEJac;
+
+    if (play_time_ > control_start_time_ + 1.0 && play_time_ <= final_time) {
+        h2 = (play_time_ - (control_start_time_ + 1.0)) / 1.0; // 1.0초 동안 0에서 1로
+    } else if (play_time_ > final_time) {
+        h2 = 1.0;
+    }
+
+    Vector3d x_dot_EE;
+    x_dot_EE.setZero();
+    x_dot_EE = h1 * x_dot_EE_desired + (1-h1) * (EEJac * J_pinv_Link4 * x_dot_Link4_desired);
+
+    Vector3d x_dot_Link4;
+    x_dot_Link4.setZero();
+    x_dot_Link4 = h2 * x_dot_Link4_desired + (1-h2) * (Link4Jac * J_pinv_EE * x_dot_EE_desired);
+
+    Vector7d target_position;
+    target_position = q_t + (J_pinv_EE * x_dot_EE + N1 * J_pinv_Link4 * (x_dot_Link4 - Link4Jac * J_pinv_EE * x_dot_EE)) * (play_time_ - q_t_time);
+    q_t = target_position;
+    q_t_time = play_time_;
+    q_desired_ = target_position;
+
+    Vector6d x_current;
+    x_current.setZero();
+    x_current(0) = x_(0,3);
+    x_current(1) = x_(1,3);
+    x_current(2) = x_(2,3);
+    x_current(3) = getLinkPose(q_, "fr3_link4")(0,3);
+    x_current(4) = getLinkPose(q_, "fr3_link4")(1,3);
+    x_current(5) = getLinkPose(q_, "fr3_link4")(2,3);
+    
+    logging_file_6 << std::fixed << std::setprecision(6) 
+                  << play_time_ << " "                 // 1. Time
+                  
+                  << x_desired_.transpose() << " "    // 2. x_desired (3개 원소)
+                  
+                  << x_current.transpose() << " "    // 3. x_current (3개 원소)
+
+                  << q_desired_.transpose() << " "       // 4. q_desired (7개 원소)
+                  << h2                               // 5. h2 활성화 파라미터 추가!
+                  << std::endl;
+}
+
 void cRoboticsController::torqueCtrlDynamic()
 {
     // logging_file_ << ... << std::endl;
@@ -463,6 +875,8 @@ void cRoboticsController::printState()
     std::cout << std::fixed << std::setprecision(3) << xdot_.transpose() << std::endl;
     std::cout << "J        :\n";
     std::cout << std::fixed << std::setprecision(3) << J_ << std::endl;
+    std::cout << "Link4x        :\n";
+    std::cout << std::fixed << std::setprecision(3) << getLinkPose(q_, "fr3_link4") << std::endl;
 }
 
 Matrix4d cRoboticsController::getLinkPose(const VectorXd& q, const std::string& link_name)

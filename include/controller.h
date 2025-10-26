@@ -31,6 +31,9 @@ class cRoboticsController
         std::ofstream logging_file_1;
         std::ofstream logging_file_2;
         std::ofstream logging_file_3;
+        std::ofstream logging_file_4;
+        std::ofstream logging_file_5;
+        std::ofstream logging_file_6;
 
         // =============================================================================
         // ================================= User data =================================
@@ -47,6 +50,9 @@ class cRoboticsController
             hw2_Jacobian,
             hw2_CLIK,
             hw2_CLIK_WPI,
+            hw3_2Tasks,
+            hw3_Nullspace,
+            hw3_TaskTrans,
             torque_ctrl_dynamic,
             // -------------------------------------
             
@@ -58,6 +64,8 @@ class cRoboticsController
         double play_time_;
         double control_start_time_;
         double q_t_time;
+        double h1;
+        double h2;
 
         // Current Joint space state
         VectorXd q_;           // joint angle (7,1)
@@ -110,6 +118,9 @@ class cRoboticsController
         void HW2_Jacobian();
         void HW2_CLIK();
         void HW2_CLIK_WPI();
+        void HW3_2Tasks();
+        void HW3_Nullspace();
+        void HW3_TaskTrans();
         void torqueCtrlDynamic();
         // ----------------------------------------------
 
