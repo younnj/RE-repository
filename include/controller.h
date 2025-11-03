@@ -47,12 +47,12 @@ class cRoboticsController
             // -------------------------------------
             // TODO 1: Add your control modes here
             // Example:
-            hw2_Jacobian,
-            hw2_CLIK,
-            hw2_CLIK_WPI,
-            hw3_2Tasks,
-            hw3_Nullspace,
-            hw3_TaskTrans,
+            hw4_GravityComp,
+            hw4_PD,
+            hw4_PDwGravityComp_Step,
+            hw4_PDwGravityComp_Spline,
+            hw4_DynamicComp_Step,
+            hw4_DynamicComp_Spline,
             torque_ctrl_dynamic,
             // -------------------------------------
             
@@ -115,12 +115,12 @@ class cRoboticsController
         // ----------------------------------------------
         // TODO 2: Add your control function here
         // Example:
-        void HW2_Jacobian();
-        void HW2_CLIK();
-        void HW2_CLIK_WPI();
-        void HW3_2Tasks();
-        void HW3_Nullspace();
-        void HW3_TaskTrans();
+        void HW4_GravityComp();
+        void HW4_PD();
+        void HW4_PDwGravityComp_Step();
+        void HW4_PDwGravityComp_Spline();
+        void HW4_DynamicComp_Step();
+        void HW4_DynamicComp_Spline();
         void torqueCtrlDynamic();
         // ----------------------------------------------
 
